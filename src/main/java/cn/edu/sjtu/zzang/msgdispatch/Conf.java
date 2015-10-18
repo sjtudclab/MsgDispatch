@@ -8,4 +8,7 @@ public class Conf {
 	public static int RABBITMQ_QOS = 1;
 	public static String RABBITMQ_PREFIX = "recv";
 	public static String RELATION_URL = "http://202.120.40.111:8080/community-server/rest/validation/relation";
+	public static String MONGODB_DBNAME="history";
+	public static String MONGODB_HOST="localhost";
+	public static int MONGODB_PORT=27017;
 }

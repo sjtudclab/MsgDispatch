@@ -10,12 +10,16 @@ import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.MqttPersistenceException;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
+import org.mongodb.morphia.Datastore;
+import org.mongodb.morphia.Morphia;
 
 import cn.edu.sjtu.se.dclab.auth.thrift.AuthClient;
+import cn.edu.sjtu.se.dclab.oss.thrift.OnlineStatusQueryClient;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.cfg.MapperConfig;
+import com.mongodb.MongoClient;
 
 import backtype.storm.task.OutputCollector;
 import backtype.storm.task.TopologyContext;
@@ -33,16 +37,23 @@ public class DispatchBolt extends BaseRichBolt {
 	private MqttClient dispatcher;
     private int qos = Conf.RABBITMQ_QOS;
     private AuthClient client;
-
+    private Morphia morphia;
+    Datastore datastore;
+    OnlineStatusQueryClient OSQclient;
+    
 	public void execute(Tuple input) {
 		// TODO Auto-generated method stub
 		String msg = input.getStringByField("msg");
+		
 		msg_dispatch(msg);
+		msg_save(msg);
 	}
 
 	public void prepare(Map conf, TopologyContext context, OutputCollector collector) {
 		// TODO Auto-generated method stub
-        prepare_dispatcher();
+		prepare_onlineStatusQueryClient();
+		prepare_mongodb();        
+        prepare_dispatcher();        
 //        prepare_authclient();
 	}
 
@@ -62,8 +73,7 @@ public class DispatchBolt extends BaseRichBolt {
             connOpts.setUserName(Conf.RABBITMQ_USER);
             connOpts.setPassword(Conf.RABBITMQ_PASS);
             dispatcher.connect(connOpts);
-            System.out.println("Bolt: Connected");
-
+            System.out.println("Bolt: Connected");  
         } catch(MqttException me) {
             System.out.println("reason "+me.getReasonCode());
             System.out.println("msg "+me.getMessage());
@@ -85,8 +95,38 @@ public class DispatchBolt extends BaseRichBolt {
 			return;
 		}
 	}
-
+	
+	private void prepare_mongodb() {			   
+		try {
+			morphia = new Morphia();
+		    // tell morphia where to find your classes
+		    // can be called multiple times with different packages or classes
+		    morphia.mapPackage("cn.edu.sjtu.se.dclab.morphia");
+		    // create the Datastore connecting to the database running on the default port on the local host
+		    datastore = morphia.createDatastore(new MongoClient(Conf.MONGODB_HOST, Conf.MONGODB_PORT), Conf.MONGODB_DBNAME);                        
+		    datastore.ensureIndexes();
+		    System.out.println("Mongodb: Connnected");
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			return;
+		}
+	}
+    
+	private void prepare_onlineStatusQueryClient()
+	{
+		try {
+			OSQclient = new OnlineStatusQueryClient();
+			System.out.println("OnlineStatusQueryClient connected");
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+    
+    
 	private void msg_dispatch(String msg) {
+
 		int fid = 0;
 		int tid = 0;
 		int type = 0;
@@ -171,6 +211,7 @@ public class DispatchBolt extends BaseRichBolt {
 				String[] splitStrings = subString.split(",");
 				int st = 0;
 				for (String string : splitStrings) {
+					topic = "recv";
 					st = Integer.valueOf(string);
 					if (fid == st)
 						continue;
@@ -224,5 +265,25 @@ public class DispatchBolt extends BaseRichBolt {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
+	}
+	
+	private void msg_save(String msg) {				
+        System.out.println("Bolt message: " + msg);
+        ObjectMapper mapper = null;
+        try {
+            mapper = new ObjectMapper();
+            Message mso = mapper.readValue(msg, Message.class);
+            cn.edu.sjtu.se.dclab.morphia.Message  ms = new cn.edu.sjtu.se.dclab.morphia.Message(
+            		mso.getFromid(),mso.getToid(),mso.getType(), mso.getContent());
+            String status = OSQclient.checkOnline(Integer.toString(mso.getToid()));            
+            System.out.println(status);
+            datastore.save(ms);
+            System.out.println("Message save to mongodb");
+		} catch (IOException e) {
+			
+			e.printStackTrace();
+		}
+	
+            
 	}
 }

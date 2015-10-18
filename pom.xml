@@ -110,7 +110,18 @@
 				</exclusion>
 			</exclusions>
 		</dependency>
-
+		
+		 <dependency>
+		        <groupId>org.mongodb.morphia</groupId>
+		        <artifactId>morphia</artifactId>
+		        <version>1.0.0-rc0</version>
+		    </dependency>
+		    
+	    <dependency>
+			<groupId>cn.edu.sjtu.se.dclab.oss</groupId>
+			<artifactId>oss-client</artifactId>
+			<version>1.0-SNAPSHOT</version>
+		</dependency>
 	</dependencies>
 
 
